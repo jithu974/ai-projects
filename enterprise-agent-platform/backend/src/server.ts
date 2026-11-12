@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import { aiClient } from './ai/client.js';
 import dotenv from 'dotenv';
 import { ResearchAgent } from './ai/agents/ResearchAgent.js';
+import { SupervisorAgent } from './ai/agents/SupervisorAgent.js';
 
 dotenv.config();
 
@@ -33,7 +34,21 @@ server.post('/api/test-ai', async (request, reply) => {
   }
 });
 
-// NEW ENDPOINT: Test the structured Research Agent
+// Test the Supervisor Agent
+server.post('/api/test-supervisor', async (request, reply) => {
+  try {
+    // The exact use case from your business context
+    const mockRequest = "Investigate customer ABC Ltd. Retrieve their account information, contract details and support ticket history. Identify unresolved issues and renewal risks. Prepare a renewal recommendation and draft a professional customer email. Show me the results for approval before making any changes.";
+    
+    const plan = await SupervisorAgent.createPlan(mockRequest);
+    return { success: true, data: plan };
+  } catch (error: any) {
+    server.log.error(error);
+    return reply.status(500).send({ success: false, error: error.message });
+  }
+});
+
+// Test the structured Research Agent
 server.post('/api/test-research', async (request, reply) => {
   try {
     // Mock user input for this phase
