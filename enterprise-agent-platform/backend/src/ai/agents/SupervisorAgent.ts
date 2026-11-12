@@ -75,7 +75,7 @@ Rules:
 3. Keep instructions precise and self-contained.`;
 
     const response = await aiClient.models.generateContent({
-      model: process.env.MODEL || 'gemini-3.5-flash',
+      model: process.env.MODEL || 'gemini-3.5-flash-lite',
       contents: `Business Request: ${request}`,
       config: {
         systemInstruction,

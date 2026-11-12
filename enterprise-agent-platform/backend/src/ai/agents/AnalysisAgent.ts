@@ -22,7 +22,7 @@ const geminiAnalysisSchema: Schema = {
 export class AnalysisAgent {
   static async execute(instruction: string, context: any): Promise<AnalysisOutput> {
     const response = await aiClient.models.generateContent({
-      model: process.env.MODEL || 'gemini-3.5-flash',
+      model: process.env.MODEL || 'gemini-3.5-flash-lite',
       contents: `Instruction: ${instruction}\n\nContext:\n${JSON.stringify(context, null, 2)}`,
       config: {
         systemInstruction: "You are a Senior Customer Success Analyst. Assess risks based ONLY on the provided context.",

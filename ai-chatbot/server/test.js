@@ -28,7 +28,7 @@ async function runTest() {
       console.warn("⚠️ Server is congested. Attempting fallback request to Lite model...");
       try {
         const fallbackResponse = await ai.models.generateContent({
-          model: "gemini-3.5-flash-lite", // Fallback variant
+          model: "gemini-3.5-flash-lite-lite", // Fallback variant
           contents: textPrompt,
         });
         console.log("\n✅ Fallback Response Received:");

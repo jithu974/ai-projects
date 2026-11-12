@@ -22,7 +22,7 @@ const geminiProposalSchema: Schema = {
 export class ProposalAgent {
   static async execute(instruction: string, context: any): Promise<ProposalOutput> {
     const response = await aiClient.models.generateContent({
-      model: process.env.MODEL || 'gemini-3.5-flash',
+      model: process.env.MODEL || 'gemini-3.5-flash-lite',
       contents: `Instruction: ${instruction}\n\nContext:\n${JSON.stringify(context, null, 2)}`,
       config: {
         systemInstruction: "You are an Enterprise Account Manager. Draft professional communications based on the analysis context.",

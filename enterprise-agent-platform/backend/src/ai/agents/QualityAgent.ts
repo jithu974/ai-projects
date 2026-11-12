@@ -20,7 +20,7 @@ const geminiQualitySchema: Schema = {
 export class QualityAgent {
   static async execute(instruction: string, context: any): Promise<QualityOutput> {
     const response = await aiClient.models.generateContent({
-      model: process.env.MODEL || 'gemini-3.5-flash',
+      model: process.env.MODEL || 'gemini-3.5-flash-lite',
       contents: `Instruction: ${instruction}\n\nContext to review:\n${JSON.stringify(context, null, 2)}`,
       config: {
         systemInstruction: "You are a strict Quality and Compliance Reviewer. Ensure the proposed actions align with the research facts.",

@@ -24,7 +24,7 @@ server.get('/api/health', async () => {
 server.post('/api/test-ai', async (request, reply) => {
   try {
     const response = await aiClient.models.generateContent({
-      model: process.env.MODEL || 'gemini-3.5-flash',
+      model: process.env.MODEL || 'gemini-3.5-flash-lite',
       contents: 'You are an enterprise AI assistant. Reply with "Gemini API connection established successfully." and nothing else.',
     });
     

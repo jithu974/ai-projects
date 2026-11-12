@@ -19,7 +19,7 @@ export const processChatMessage = async (
     throw new Error('GEMINI_API_KEY is missing. Set it in server/.env and restart the backend.');
   }
   const ai = new GoogleGenAI({ apiKey });
-  const modelName = 'gemini-3.5-flash-lite';//'gemini-3.8-flash';
+  const modelName = 'gemini-3.5-flash-lite-lite';//'gemini-3.8-flash';
 
   const contents = [
     ...history.map((msg) => ({
