@@ -2,9 +2,9 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { aiClient } from './ai/client.js';
 import dotenv from 'dotenv';
-import { ResearchAgent } from './ai/agents/ResearchAgent.js';
-import { SupervisorAgent } from './ai/agents/SupervisorAgent.js';
 import { Orchestrator } from './ai/Orchestrator.js';
+import { initializeDatabase } from './db/client.js';
+import { TaskRepository } from './db/repositories/TaskRepository.js';
 
 dotenv.config();
 
@@ -50,8 +50,26 @@ server.post('/api/run-workflow', async (request, reply) => {
   }
 });
 
+// NEW ENDPOINT: Fetch a task by ID from PostgreSQL
+server.get('/api/tasks/:id', async (request: any, reply) => {
+  try {
+    const taskId = request.params.id;
+    const history = await TaskRepository.getTaskHistory(taskId);
+    if (!history) {
+      return reply.status(404).send({ success: false, error: "Task not found" });
+    }
+    return { success: true, data: history };
+  } catch (error: any) {
+    server.log.error(error);
+    return reply.status(500).send({ success: false, error: error.message });
+  }
+});
+
 const start = async () => {
   try {
+    // Wait for the database schema to be created before starting the server
+    await initializeDatabase();
+    
     const port = parseInt(process.env.PORT || '3000');
     await server.listen({ port, host: '0.0.0.0' });
     console.log(`Backend running on http://localhost:${port}`);
