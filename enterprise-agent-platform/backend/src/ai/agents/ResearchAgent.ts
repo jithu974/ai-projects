@@ -40,14 +40,14 @@ const geminiResearchSchema: Schema = {
 };
 
 export class ResearchAgent {
-  static async execute(query: string): Promise<ResearchOutput> {
+  static async execute(instruction: string, context: any): Promise<ResearchOutput> {
     const systemInstruction = `You are a Senior Enterprise Customer Research Specialist. 
 Your job is to extract and structure factual customer information from the provided context.
 Do not invent information. If something is unknown, place it in the missingInformation array.`;
 
     const response = await aiClient.models.generateContent({
       model: process.env.MODEL || 'gemini-3.5-flash',
-      contents: `Context/Query to analyze: ${query}`,
+      contents: `Instruction: ${instruction}\n\nExisting Context:\n${JSON.stringify(context, null, 2)}`,
       config: {
         systemInstruction,
         responseMimeType: 'application/json',
