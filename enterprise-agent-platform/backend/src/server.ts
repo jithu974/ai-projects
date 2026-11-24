@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import { Orchestrator } from './ai/Orchestrator.js';
 import { initializeDatabase } from './db/client.js';
 import { TaskRepository } from './db/repositories/TaskRepository.js';
+import { ApprovalService } from './services/ApprovalService.js';
 
 dotenv.config();
 
@@ -50,7 +51,7 @@ server.post('/api/run-workflow', async (request, reply) => {
   }
 });
 
-// NEW ENDPOINT: Fetch a task by ID from PostgreSQL
+// Fetch a task by ID from PostgreSQL
 server.get('/api/tasks/:id', async (request: any, reply) => {
   try {
     const taskId = request.params.id;
@@ -65,11 +66,44 @@ server.get('/api/tasks/:id', async (request: any, reply) => {
   }
 });
 
+// NEW ENDPOINT: Get approvals for a task
+server.get('/api/tasks/:id/approvals', async (request: any, reply) => {
+  try {
+    const approvals = await ApprovalService.getPendingApprovals(request.params.id);
+    return { success: true, data: approvals };
+  } catch (error: any) {
+    server.log.error(error);
+    return reply.status(500).send({ success: false, error: error.message });
+  }
+});
+
+// NEW ENDPOINT: Approve and execute
+server.post('/api/approvals/:id/approve', async (request: any, reply) => {
+  try {
+    const result = await ApprovalService.approveAndExecute(request.params.id);
+    return { success: true, data: result };
+  } catch (error: any) {
+    server.log.error(error);
+    return reply.status(500).send({ success: false, error: error.message });
+  }
+});
+
+// NEW ENDPOINT: Reject proposal
+server.post('/api/approvals/:id/reject', async (request: any, reply) => {
+  try {
+    await ApprovalService.reject(request.params.id);
+    return { success: true, message: "Approval rejected." };
+  } catch (error: any) {
+    server.log.error(error);
+    return reply.status(500).send({ success: false, error: error.message });
+  }
+});
+
 const start = async () => {
   try {
     // Wait for the database schema to be created before starting the server
     await initializeDatabase();
-    
+
     const port = parseInt(process.env.PORT || '3000');
     await server.listen({ port, host: '0.0.0.0' });
     console.log(`Backend running on http://localhost:${port}`);
