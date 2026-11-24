@@ -24,7 +24,7 @@ Building AI applications specializing in Agentic AI, RAG, MCP and AI application
 | # | Project |
 |---|---|
 | 01 | ai - chatbot |
-| 02 | Document assistant |
+| 02 | Data assistant |
 | 03 | Enterprise Knowledge Assistant |
 | 04 | Advanced RAG System |
 | 05 | AI Agents |
