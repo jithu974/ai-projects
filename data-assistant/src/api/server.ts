@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
+import multipart from '@fastify/multipart';
 import {
   hasZodFastifySchemaValidationErrors,
   serializerCompiler,
@@ -11,14 +12,16 @@ import type { IHealthCheckable } from '../domain/health.js';
 import { buildLoggerOptions } from '../observability/logger.js';
 import type { AppConfig } from '../shared/config.js';
 import { AppError } from '../shared/errors.js';
+import { createDocumentRoutes, type DocumentIngestUseCase } from './routes/document.routes.js';
 import { createHealthRoutes } from './routes/health.routes.js';
 
 export interface ServerDependencies {
   config: AppConfig;
   healthChecks: readonly IHealthCheckable[];
+  ingestUseCase?: DocumentIngestUseCase;
 }
 
-export function buildServer({ config, healthChecks }: ServerDependencies): FastifyInstance {
+export function buildServer({ config, healthChecks, ingestUseCase }: ServerDependencies): FastifyInstance {
   const loggerOptions = buildLoggerOptions(config);
   const app = Fastify({
     ...(loggerOptions !== undefined ? { logger: loggerOptions } : {}),
@@ -30,6 +33,13 @@ export function buildServer({ config, healthChecks }: ServerDependencies): Fasti
 
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
+
+  app.register(multipart, {
+    limits: {
+      files: 1,
+      fileSize: config.MAX_UPLOAD_SIZE_MB * 1024 * 1024,
+    },
+  });
 
   // Propagate correlation ID on every response
   app.addHook('onSend', async (request, reply) => {
@@ -80,6 +90,9 @@ export function buildServer({ config, healthChecks }: ServerDependencies): Fasti
     config.HEALTH_CHECK_TIMEOUT_MS,
   );
   app.register(createHealthRoutes(checkReadiness));
+  if (ingestUseCase) {
+    app.register(createDocumentRoutes(ingestUseCase), { prefix: '/api/v1' });
+  }
 
   return app;
 }

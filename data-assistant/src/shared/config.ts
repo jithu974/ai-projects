@@ -18,6 +18,11 @@ export const envSchema = z.object({
   QDRANT_API_KEY: z.string().min(1).optional(),
 
   HEALTH_CHECK_TIMEOUT_MS: z.coerce.number().int().min(200).max(15000).default(2000),
+
+  UPLOAD_STORAGE_DIR: z.string().min(1).default('./.data/uploads'),
+  MAX_UPLOAD_SIZE_MB: z.coerce.number().int().min(1).max(100).default(25),
+  INGESTION_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(1),
+  INGESTION_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;
