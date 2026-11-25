@@ -7,6 +7,8 @@ import { LocalDiskObjectStorage } from './infrastructure/storage/local-disk-stor
 import { QdrantVectorClient } from './infrastructure/vector/qdrant.js';
 import { ParserRegistry } from './ingestion/parsers/parser-registry.js';
 import { loadConfig } from './shared/config.js';
+import { ChunkerRegistry } from './ingestion/chunking/chunker-registry.js';
+import { Cl100kTokenizer } from './ingestion/chunking/tokenizer.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -17,11 +19,15 @@ async function main(): Promise<void> {
   const storage = new LocalDiskObjectStorage(config.UPLOAD_STORAGE_DIR);
   const parserRegistry = ParserRegistry.createDefault();
   const queue = new IngestionQueue(config);
+  const tokenizer = new Cl100kTokenizer(config.TOKENIZER_CACHE_SIZE);
+  const chunkerRegistry = ChunkerRegistry.createDefault(tokenizer);
   const ingestUseCase = new IngestDocumentUseCase(
     postgres.db,
     storage,
     queue,
     config.MAX_UPLOAD_SIZE_MB * 1024 * 1024,
+    chunkerRegistry,
+    config,
   );
 
   const app = buildServer({
@@ -35,6 +41,7 @@ async function main(): Promise<void> {
     storage,
     parserRegistry,
     logger: app.log,
+    chunkerRegistry: chunkerRegistry,
   });
 
   let shuttingDown = false;

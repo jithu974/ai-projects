@@ -1,11 +1,15 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
+import type { ChunkingStrategyName, DocumentChunk } from '../domain/chunk.js';
 import type { SupportedMimeType } from '../domain/document.js';
 import type { IObjectStorage } from '../domain/storage.js';
 import type { Database } from '../infrastructure/db/client.js';
-import { documents, documentVersions, ingestionJobs, tenants } from '../infrastructure/db/schema.js';
+import { chunks, documents, documentVersions, ingestionJobs, tenants } from '../infrastructure/db/schema.js';
 import type { IngestionQueue } from '../infrastructure/queue/ingestion.queue.js';
 import { validateUploadedFile } from '../ingestion/file-validator.js';
+import type { ChunkerRegistry } from '../ingestion/chunking/chunker-registry.js';
+import { validateChunkQuality, type ChunkQualityReport } from '../ingestion/chunking/quality-validator.js';
+import type { AppConfig } from '../shared/config.js';
 import { NotFoundError, ValidationError } from '../shared/errors.js';
 
 export interface UploadResult {
@@ -23,6 +27,11 @@ export class IngestDocumentUseCase {
     private readonly storage: IObjectStorage,
     private readonly queue: IngestionQueue,
     private readonly maxUploadBytes: number,
+    private readonly chunkerRegistry: ChunkerRegistry,
+    private readonly chunkingConfig: Pick<
+      AppConfig,
+      'CHUNK_OVERLAP_TOKENS' | 'PARENT_CHUNK_TOKENS' | 'CHILD_CHUNK_TOKENS'
+    >,
   ) {}
 
   async upload(params: {
@@ -220,5 +229,85 @@ export class IngestDocumentUseCase {
       : [undefined];
 
     return { document: doc, version: version ?? null, latestJob: latestJob ?? null };
+  }
+
+  async getDocumentChunks(tenantId: string, documentId: string) {
+    const [document] = await this.db
+      .select({ id: documents.id })
+      .from(documents)
+      .where(and(eq(documents.id, documentId), eq(documents.tenantId, tenantId)))
+      .limit(1);
+
+    if (!document) throw new NotFoundError(`Document ${documentId} not found`);
+
+    return this.db
+      .select({
+        id: chunks.id,
+        chunkLevel: chunks.chunkLevel,
+        chunkType: chunks.chunkType,
+        pageNumber: chunks.pageNumber,
+        headingPath: chunks.headingPath,
+        tokenCount: chunks.tokenCount,
+        content: chunks.content,
+        contextualContent: chunks.contextualContent,
+        metadata: chunks.metadata,
+      })
+      .from(chunks)
+      .where(
+        and(
+          eq(chunks.tenantId, tenantId),
+          eq(chunks.documentId, documentId),
+          eq(chunks.isActive, true),
+        ),
+      )
+      .orderBy(asc(chunks.chunkIndex));
+  }
+
+  async compareDocumentChunks(
+    tenantId: string,
+    documentId: string,
+    strategy: Exclude<ChunkingStrategyName, 'semantic'>,
+    targetTokens: number,
+  ): Promise<{ chunks: DocumentChunk[]; quality: ChunkQualityReport }> {
+    const [document] = await this.db
+      .select({ currentVersionId: documents.currentVersionId })
+      .from(documents)
+      .where(and(eq(documents.id, documentId), eq(documents.tenantId, tenantId)))
+      .limit(1);
+
+    if (!document) throw new NotFoundError(`Document ${documentId} not found`);
+    if (!document.currentVersionId) {
+      throw new ValidationError('Document has no normalized content to compare');
+    }
+
+    const [version] = await this.db
+      .select({ normalizedContent: documentVersions.normalizedContent })
+      .from(documentVersions)
+      .where(
+        and(
+          eq(documentVersions.id, document.currentVersionId),
+          eq(documentVersions.tenantId, tenantId),
+        ),
+      )
+      .limit(1);
+
+    if (!version?.normalizedContent) {
+      throw new ValidationError('Document has no normalized content to compare');
+    }
+
+    const generatedChunks = await this.chunkerRegistry.getChunker(strategy).chunk(
+      version.normalizedContent,
+      {
+        targetTokens,
+        overlapTokens: this.chunkingConfig.CHUNK_OVERLAP_TOKENS,
+        parentTargetTokens: this.chunkingConfig.PARENT_CHUNK_TOKENS,
+        childTargetTokens: this.chunkingConfig.CHILD_CHUNK_TOKENS,
+      },
+    );
+
+    return {
+      chunks: generatedChunks,
+      quality: validateChunkQuality(version.normalizedContent, generatedChunks),
+    };
   }
 }

@@ -8,7 +8,8 @@ import {
   uniqueIndex,
   index,
 } from 'drizzle-orm/pg-core';
-import type { NormalizedDocument } from '../../domain/document.js';
+import type { NormalizedDocument } from '../../domain/document.js'; // For Ingestion
+import { boolean, type AnyPgColumn } from 'drizzle-orm/pg-core'; // For chunking
 
 export const tenants = pgTable('tenants', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -33,7 +34,7 @@ export const documents = pgTable(
     originalFilename: text('original_filename').notNull(),
     mimeType: text('mime_type').notNull(),
     currentVersionId: uuid('current_version_id'),
-    status: text('status').notNull().default('PENDING'), // PENDING | PROCESSING | PARSED | FAILED
+    status: text('status').notNull().default('PENDING'), // PENDING | PROCESSING | CHUNKED | FAILED
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -60,7 +61,7 @@ export const documentVersions = pgTable(
     pageCount: integer('page_count'),
     charCount: integer('char_count'),
     normalizedContent: jsonb('normalized_content').$type<NormalizedDocument>(),
-    status: text('status').notNull().default('PENDING'), // PENDING | PROCESSING | PARSED | FAILED
+    status: text('status').notNull().default('PENDING'), // PENDING | PROCESSING | CHUNKED | FAILED
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -92,4 +93,43 @@ export const ingestionJobs = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index('idx_ingestion_jobs_version').on(table.documentVersionId)],
+);
+
+export const chunks = pgTable(
+  'chunks',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    documentId: uuid('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    versionId: uuid('version_id')
+      .notNull()
+      .references(() => documentVersions.id, { onDelete: 'cascade' }),
+    parentChunkId: uuid('parent_chunk_id').references((): AnyPgColumn => chunks.id, {
+      onDelete: 'cascade',
+    }),
+    chunkLevel: text('chunk_level').notNull().default('standard'), // standard | parent | child
+    chunkType: text('chunk_type').notNull().default('text'),       // text | table | list | code
+    chunkIndex: integer('chunk_index').notNull(),
+    pageNumber: integer('page_number').notNull(),
+    pageEndNumber: integer('page_end_number').notNull(),
+    headingPath: jsonb('heading_path').$type<string[]>().notNull().default([]),
+    content: text('content').notNull(),
+    contextualContent: text('contextual_content').notNull(),
+    tokenCount: integer('token_count').notNull(),
+    charCount: integer('char_count').notNull(),
+    contentHash: text('content_hash').notNull(),
+    strategyName: text('strategy_name').notNull(),
+    metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('idx_chunks_tenant_doc').on(table.tenantId, table.documentId),
+    index('idx_chunks_version').on(table.versionId),
+    index('idx_chunks_parent').on(table.parentChunkId),
+  ],
 );

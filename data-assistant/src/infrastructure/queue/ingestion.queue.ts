@@ -9,9 +9,12 @@ import type { ParserRegistry } from '../../ingestion/parsers/parser-registry.js'
 import type { AppConfig } from '../../shared/config.js';
 import { DocumentParsingError } from '../../shared/errors.js';
 import type { Database } from '../db/client.js';
-import { documents, documentVersions, ingestionJobs } from '../db/schema.js';
+import { chunks, documents, documentVersions, ingestionJobs } from '../db/schema.js';
+import { ChunkerRegistry } from '../../ingestion/chunking/chunker-registry.js';
+import { validateChunkQuality } from '../../ingestion/chunking/quality-validator.js';
 
 export const INGESTION_QUEUE_NAME = 'document-ingestion';
+const CHUNK_INSERT_BATCH_SIZE = 200;
 
 export interface IngestionJobPayload {
   ingestionJobId: string;
@@ -75,8 +78,9 @@ export class IngestionWorker {
     storage: IObjectStorage;
     parserRegistry: ParserRegistry;
     logger: FastifyBaseLogger;
+    chunkerRegistry: ChunkerRegistry;
   }) {
-    const { config, db, storage, parserRegistry, logger } = params;
+    const { config, db, storage, parserRegistry, logger, chunkerRegistry } = params;
     this.connection = createBullRedisConnection(config.REDIS_URL);
 
     this.worker = new Worker<IngestionJobPayload>(
@@ -116,11 +120,45 @@ export class IngestionWorker {
             parsed,
           });
 
+          const chunker = chunkerRegistry.getChunker(config.CHUNKING_STRATEGY);
+          const generatedChunks = await chunker.chunk(normalized, {
+            targetTokens: config.CHUNK_TARGET_TOKENS,
+            overlapTokens: config.CHUNK_OVERLAP_TOKENS,
+            parentTargetTokens: config.PARENT_CHUNK_TOKENS,
+            childTargetTokens: config.CHILD_CHUNK_TOKENS,
+          });
+
+          const quality = validateChunkQuality(normalized, generatedChunks);
+          if (!quality.passed) {
+            throw new DocumentParsingError(
+              'EMPTY_CONTENT',
+              `Chunk quality validation failed with ${quality.errorCount} error(s)`,
+            );
+          }
+          if (quality.warningCount > 0) {
+            logger.warn(
+              { documentId: data.documentId, warnings: quality.issues },
+              'Chunk quality warnings detected',
+            );
+          }
+
           await db.transaction(async (tx) => {
+            await tx.delete(chunks).where(eq(chunks.versionId, data.versionId));
+
+            for (let offset = 0; offset < generatedChunks.length; offset += CHUNK_INSERT_BATCH_SIZE) {
+              const batch = generatedChunks
+                .slice(offset, offset + CHUNK_INSERT_BATCH_SIZE)
+                .map(({ metadata, ...chunk }) => ({ ...chunk, metadata: { ...metadata } }));
+
+              await tx
+                .insert(chunks)
+                .values(batch);
+            }
+
             await tx
               .update(documentVersions)
               .set({
-                status: 'PARSED',
+                status: 'CHUNKED',
                 parserName: normalized.parserName,
                 parserVersion: normalized.parserVersion,
                 pageCount: normalized.pageCount,
@@ -131,7 +169,7 @@ export class IngestionWorker {
 
             await tx
               .update(documents)
-              .set({ status: 'PARSED', currentVersionId: data.versionId, updatedAt: new Date() })
+              .set({ status: 'CHUNKED', currentVersionId: data.versionId, updatedAt: new Date() })
               .where(eq(documents.id, data.documentId));
 
             await tx

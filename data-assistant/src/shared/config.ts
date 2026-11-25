@@ -23,6 +23,15 @@ export const envSchema = z.object({
   MAX_UPLOAD_SIZE_MB: z.coerce.number().int().min(1).max(100).default(25),
   INGESTION_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(1),
   INGESTION_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
+
+  CHUNKING_STRATEGY: z
+    .enum(['fixed', 'token', 'sentence', 'recursive', 'markdown', 'parent_child'])
+    .default('markdown'),
+  CHUNK_TARGET_TOKENS: z.coerce.number().int().min(50).max(2000).default(400),
+  CHUNK_OVERLAP_TOKENS: z.coerce.number().int().min(0).max(500).default(50),
+  PARENT_CHUNK_TOKENS: z.coerce.number().int().min(200).max(4000).default(800),
+  CHILD_CHUNK_TOKENS: z.coerce.number().int().min(50).max(800).default(200),
+  TOKENIZER_CACHE_SIZE: z.coerce.number().int().min(0).max(100000).default(5000),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import Fastify, { type FastifyInstance } from 'fastify';
 import multipart from '@fastify/multipart';
+import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
 import {
   hasZodFastifySchemaValidationErrors,
   serializerCompiler,
@@ -18,10 +18,25 @@ import { createHealthRoutes } from './routes/health.routes.js';
 export interface ServerDependencies {
   config: AppConfig;
   healthChecks: readonly IHealthCheckable[];
-  ingestUseCase?: DocumentIngestUseCase;
+  ingestUseCase?: DocumentIngestUseCase | undefined;
 }
 
-export function buildServer({ config, healthChecks, ingestUseCase }: ServerDependencies): FastifyInstance {
+const MULTIPART_CLIENT_ERROR_MAP: Record<string, { statusCode: number; code: string }> = {
+  FST_REQ_FILE_TOO_LARGE: { statusCode: 413, code: 'PAYLOAD_TOO_LARGE' },
+  FST_FILES_LIMIT: { statusCode: 400, code: 'VALIDATION_ERROR' },
+  FST_INVALID_MULTIPART_CONTENT_TYPE: { statusCode: 400, code: 'VALIDATION_ERROR' },
+  FST_PARTS_LIMIT: { statusCode: 400, code: 'VALIDATION_ERROR' },
+};
+
+function isFastifyError(err: unknown): err is FastifyError {
+  return err instanceof Error && 'code' in err && typeof (err as FastifyError).code === 'string';
+}
+
+export function buildServer({
+  config,
+  healthChecks,
+  ingestUseCase,
+}: ServerDependencies): FastifyInstance {
   const loggerOptions = buildLoggerOptions(config);
   const app = Fastify({
     ...(loggerOptions !== undefined ? { logger: loggerOptions } : {}),
@@ -34,9 +49,11 @@ export function buildServer({ config, healthChecks, ingestUseCase }: ServerDepen
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 
+  // Streaming multipart upload limits enforced before buffering into RAM
   app.register(multipart, {
     limits: {
       files: 1,
+      fields: 5,
       fileSize: config.MAX_UPLOAD_SIZE_MB * 1024 * 1024,
     },
   });
@@ -75,6 +92,18 @@ export function buildServer({ config, healthChecks, ingestUseCase }: ServerDepen
       });
     }
 
+    if (isFastifyError(err) && err.code in MULTIPART_CLIENT_ERROR_MAP) {
+      const mapped = MULTIPART_CLIENT_ERROR_MAP[err.code]!;
+      request.log.warn({ err, code: err.code }, err.message);
+      return reply.status(mapped.statusCode).send({
+        error: {
+          code: mapped.code,
+          message: err.message,
+          requestId: request.id,
+        },
+      });
+    }
+
     request.log.error({ err }, 'Unhandled exception');
     return reply.status(500).send({
       error: {
@@ -90,6 +119,7 @@ export function buildServer({ config, healthChecks, ingestUseCase }: ServerDepen
     config.HEALTH_CHECK_TIMEOUT_MS,
   );
   app.register(createHealthRoutes(checkReadiness));
+
   if (ingestUseCase) {
     app.register(createDocumentRoutes(ingestUseCase), { prefix: '/api/v1' });
   }
