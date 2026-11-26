@@ -24,6 +24,7 @@ export const envSchema = z.object({
   INGESTION_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(1),
   INGESTION_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
 
+  // Phase 3 — Chunking
   CHUNKING_STRATEGY: z
     .enum(['fixed', 'token', 'sentence', 'recursive', 'markdown', 'parent_child'])
     .default('markdown'),
@@ -32,6 +33,16 @@ export const envSchema = z.object({
   PARENT_CHUNK_TOKENS: z.coerce.number().int().min(200).max(4000).default(800),
   CHILD_CHUNK_TOKENS: z.coerce.number().int().min(50).max(800).default(200),
   TOKENIZER_CACHE_SIZE: z.coerce.number().int().min(0).max(100000).default(5000),
+
+  // Phase 4 — Deterministic Embeddings & Qdrant
+  EMBEDDING_PROVIDER: z.enum(['deterministic']).default('deterministic'),
+  EMBEDDING_MODEL: z.string().min(1).default('deterministic-hash-v1'),
+  EMBEDDING_DIMENSIONS: z.coerce.number().int().min(64).max(3072).default(384),
+  EMBEDDING_BATCH_SIZE: z.coerce.number().int().min(1).max(256).default(32),
+  EMBEDDING_MAX_RETRIES: z.coerce.number().int().min(0).max(8).default(3),
+  EMBEDDING_CACHE_TTL_SEC: z.coerce.number().int().min(60).max(2_592_000).default(604_800),
+  QDRANT_COLLECTION_ALIAS: z.string().min(1).default('chunks_live'),
+  QDRANT_COLLECTION_PREFIX: z.string().min(1).default('chunks'),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;

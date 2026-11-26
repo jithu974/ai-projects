@@ -14,11 +14,15 @@ import type { AppConfig } from '../shared/config.js';
 import { AppError } from '../shared/errors.js';
 import { createDocumentRoutes, type DocumentIngestUseCase } from './routes/document.routes.js';
 import { createHealthRoutes } from './routes/health.routes.js';
+import type { IngestDocumentUseCase } from '../application/ingest-document.js';
+import type { VectorSearchUseCase } from '../application/vector-search.js';
+import { createSearchRoutes } from './routes/search.routes.js';
 
 export interface ServerDependencies {
   config: AppConfig;
   healthChecks: readonly IHealthCheckable[];
-  ingestUseCase?: DocumentIngestUseCase | undefined;
+  ingestUseCase?: IngestDocumentUseCase | undefined;
+  vectorSearchUseCase?: Pick<VectorSearchUseCase, 'execute'> | undefined;
 }
 
 const MULTIPART_CLIENT_ERROR_MAP: Record<string, { statusCode: number; code: string }> = {
@@ -36,6 +40,7 @@ export function buildServer({
   config,
   healthChecks,
   ingestUseCase,
+  vectorSearchUseCase,
 }: ServerDependencies): FastifyInstance {
   const loggerOptions = buildLoggerOptions(config);
   const app = Fastify({
@@ -122,6 +127,10 @@ export function buildServer({
 
   if (ingestUseCase) {
     app.register(createDocumentRoutes(ingestUseCase), { prefix: '/api/v1' });
+  }
+
+  if (vectorSearchUseCase) {
+    app.register(createSearchRoutes(vectorSearchUseCase), { prefix: '/api/v1' });
   }
 
   return app;

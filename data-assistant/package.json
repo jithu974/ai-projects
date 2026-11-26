@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@fastify/multipart": "^10.1.9",
+    "@google/genai": "^3.6.1",
     "@qdrant/js-client-rest": "^1.18.0",
     "bullmq": "^6.7.8",
     "cheerio": "^1.2.0",
@@ -29,6 +30,7 @@
     "fastify-type-provider-zod": "7.0.0",
     "file-type": "^22.3.0",
     "gpt-tokenizer": "^4.1.2",
+    "groq-sdk": "^1.6.0",
     "ioredis": "6.1.0",
     "jszip": "^3.10.2",
     "mammoth": "^1.13.0",

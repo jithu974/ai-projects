@@ -63,11 +63,13 @@ export const documentVersions = pgTable(
     normalizedContent: jsonb('normalized_content').$type<NormalizedDocument>(),
     status: text('status').notNull().default('PENDING'), // PENDING | PROCESSING | CHUNKED | FAILED
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    embeddingModel: text('embedding_model'),
+    embeddingDimensions: integer('embedding_dimensions'),
   },
   (table) => [
     uniqueIndex('uq_doc_versions_tenant_hash').on(table.tenantId, table.sha256Hash),
     index('idx_doc_versions_document').on(table.documentId),
-  ],
+  ],  
 );
 
 export const ingestionJobs = pgTable(
@@ -126,6 +128,8 @@ export const chunks = pgTable(
     metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
     isActive: boolean('is_active').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    embeddingModel: text('embedding_model'),
+    embeddedAt: timestamp('embedded_at', { withTimezone: true }),
   },
   (table) => [
     index('idx_chunks_tenant_doc').on(table.tenantId, table.documentId),
