@@ -14,6 +14,11 @@ import { ChunkerRegistry } from './ingestion/chunking/chunker-registry.js';
 import { Cl100kTokenizer } from './ingestion/chunking/tokenizer.js';
 import { ParserRegistry } from './ingestion/parsers/parser-registry.js';
 import { loadConfig } from './shared/config.js';
+import { AskQuestionUseCase } from './application/ask-question.js';
+import { createLlmProvider } from './infrastructure/llm/llm-factory.js';
+import { LlmService } from './infrastructure/llm/llm.service.js';
+import { ContextBuilder } from './generation/context-builder.js';
+import { PromptBuilder } from './generation/prompt-builder.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -28,7 +33,7 @@ async function main(): Promise<void> {
   const chunkerRegistry = ChunkerRegistry.createDefault(tokenizer);
   const ingestionQueue = new IngestionQueue(config);
 
-  // Phase 4: Zero-cost deterministic embedding service + Qdrant Cloud Free Tier
+  // 3 Zero-cost deterministic embedding service + Qdrant Cloud Free Tier
   const embeddingProvider = createEmbeddingProvider(config);
   const embeddingCache = new RedisEmbeddingCache(redis.client);
   const vectorStore = new QdrantVectorStore(
@@ -43,6 +48,16 @@ async function main(): Promise<void> {
     embeddingProvider.dimensions,
   );
 
+  // 4. Free-tier LLM provider, context builder, and prompt builder (Phase 5)
+  const llmProvider = createLlmProvider(config);
+  const llmService = new LlmService(llmProvider, {
+    timeoutMs: config.LLM_TIMEOUT_MS,
+    maxRetries: config.LLM_MAX_RETRIES,
+  });
+  const contextBuilder = new ContextBuilder(tokenizer);
+  const promptBuilder = new PromptBuilder();
+
+  // 5. Application use cases
   const maxUploadBytes = config.MAX_UPLOAD_SIZE_MB * 1024 * 1024;
   const ingestUseCase = new IngestDocumentUseCase(
     postgres.db,
@@ -66,11 +81,28 @@ async function main(): Promise<void> {
   );
   vectorSearchUseCase = new VectorSearchUseCase(embeddingService, vectorStore, postgres.db);
 
+  const askQuestionUseCase = new AskQuestionUseCase(
+    vectorSearchUseCase,
+    contextBuilder,
+    promptBuilder,
+    llmService,
+    {
+      defaultTopK: config.RAG_DEFAULT_TOP_K,
+      minSimilarityScore: config.RAG_MIN_SIMILARITY_SCORE,
+      maxContextTokens: config.RAG_MAX_CONTEXT_TOKENS,
+      temperature: config.LLM_TEMPERATURE,
+      maxOutputTokens: config.LLM_MAX_OUTPUT_TOKENS,
+      // Never expose raw retrieved prompts/chunks in production even if requested
+      allowDebugExposure: config.NODE_ENV !== 'production' && config.RAG_EXPOSE_DEBUG_PROMPT,
+    },
+  );
+
   const serverDependencies = {
     config,
     healthChecks: [postgres, redis, qdrant],
     ingestUseCase,
     vectorSearchUseCase,
+    askQuestionUseCase,
   };
   const app = buildServer(serverDependencies);
 

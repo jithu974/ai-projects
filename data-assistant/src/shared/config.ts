@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+const optionalNonEmptyString = z.preprocess(
+  (val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
+  z.string().min(1).optional(),
+);
+
 export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   HOST: z.string().min(1).default('127.0.0.1'),
@@ -15,7 +20,7 @@ export const envSchema = z.object({
   REDIS_URL: z.url(),
 
   QDRANT_URL: z.url(),
-  QDRANT_API_KEY: z.string().min(1).optional(),
+  QDRANT_API_KEY: optionalNonEmptyString,
 
   HEALTH_CHECK_TIMEOUT_MS: z.coerce.number().int().min(200).max(15000).default(2000),
 
@@ -43,6 +48,21 @@ export const envSchema = z.object({
   EMBEDDING_CACHE_TTL_SEC: z.coerce.number().int().min(60).max(2_592_000).default(604_800),
   QDRANT_COLLECTION_ALIAS: z.string().min(1).default('chunks_live'),
   QDRANT_COLLECTION_PREFIX: z.string().min(1).default('chunks'),
+
+  // Phase 5 — Free-Tier LLM & Basic RAG
+  LLM_PROVIDER: z.enum(['gemini', 'groq', 'mock']).default('gemini'),
+  LLM_MODEL: z.string().min(1).default('gemini-3.5-flash-lite'),
+  LLM_TEMPERATURE: z.coerce.number().min(0).max(1).default(0.1),
+  LLM_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(64).max(4096).default(512),
+  LLM_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(25_000),
+  LLM_MAX_RETRIES: z.coerce.number().int().min(0).max(6).default(2),
+  GEMINI_API_KEY: optionalNonEmptyString,
+  GROQ_API_KEY: optionalNonEmptyString,
+
+  RAG_DEFAULT_TOP_K: z.coerce.number().int().min(1).max(20).default(5),
+  RAG_MIN_SIMILARITY_SCORE: z.coerce.number().min(-1).max(1).default(0.15),
+  RAG_MAX_CONTEXT_TOKENS: z.coerce.number().int().min(200).max(16_000).default(1800),
+  RAG_EXPOSE_DEBUG_PROMPT: z.stringbool().default(true),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;
